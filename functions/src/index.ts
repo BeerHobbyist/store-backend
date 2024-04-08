@@ -14,7 +14,7 @@ const app = express();
 app.use(express.json());
 
 // Apply CORS middleware.
-const corsOptions = { origin: true }; // Update with your frontend URL
+const corsOptions = { origin: 'localhost:5173' }; // Update with your frontend URL
 app.use(cors(corsOptions));
 
 // Define the '/products' route
