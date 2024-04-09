@@ -5,7 +5,7 @@ import { Request, Response } from 'express';
 import { onRequest } from 'firebase-functions/v2/https';
 import { validateProductFormat } from './utils-functions';
 import { findProductById } from './utils-functions';
-`   `
+
 // Initialize Firebase Admin
 admin.initializeApp();
 
@@ -62,9 +62,11 @@ app.post('/add-order', async (req: Request, res: Response) => {
     console.log(req.body);
     try {
         const order = req.body;
+        order.orderTime = new Date();
         const newOrder = await admin.firestore().collection("Orders").add(order);
         res.json({ id: newOrder.id });
     } catch (error) {
+        console.log(error);
         res.status(500).send("Error adding order: " + error);
     }
 });
