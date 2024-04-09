@@ -5,7 +5,7 @@ import { Request, Response } from 'express';
 import { onRequest } from 'firebase-functions/v2/https';
 import { validateProductFormat } from './utils-functions';
 import { findProductById } from './utils-functions';
-
+`   `
 // Initialize Firebase Admin
 admin.initializeApp();
 
@@ -14,7 +14,7 @@ const app = express();
 app.use(express.json());
 
 // Apply CORS middleware.
-const corsOptions = { origin: 'localhost:5173' }; // Update with your frontend URL
+const corsOptions = { origin: true }; // Update with your frontend URL
 app.use(cors(corsOptions));
 
 // Define the '/products' route
@@ -76,7 +76,12 @@ app.get('/orders', async (req: Request, res: Response) => {
             const productsOrdered = doc.data().productsOrdered;
             // Use Promise.all to wait for all findProductById promises to resolve
             const products = await Promise.all(
-                productsOrdered.map((product: any) => findProductById(product.id))
+                productsOrdered.map(async (product: any) => {
+                    return {
+                        count: product.count,
+                        product: await findProductById(product.id)
+                    }
+                })
             );
             // Return the complete order object with resolved products
             return {
