@@ -17,28 +17,66 @@ app.use(express.json());
 const corsOptions = { origin: true }; // Update with your frontend URL
 app.use(cors(corsOptions));
 
-// Define the '/products' route
 app.get('/products', async (req: Request, res: Response) => {
     try {
         const productsSnapshot = await admin.firestore().collection("Products").get();
-        const products = productsSnapshot.docs.map(doc => {
-            const product = {
-                id: doc.id,
-                ...doc.data()
-            };
-            if (!validateProductFormat(product)) {
-                res.status(400).send("Invalid product format");
-                return;
-            } else {
-                return product;
+        const productsPromises = productsSnapshot.docs.map(async doc => {
+            const categories = doc.data().category;
+            let categoriesData = await Promise.all(
+                categories.map(async (category: any) => {
+                    const categoryDoc = await admin.firestore().collection("Categories").doc(category.name).get();
+                    return { name: categoryDoc.id, ...categoryDoc.data(), productPriority: category.priority };
+                })
+            );
+            let products = [] as any[];
+            categoriesData.forEach((category: any) => {
+                products.push({
+                    id: doc.id,
+                    name: doc.data().name,
+                    packageType: doc.data().packageType,
+                    price: doc.data().price,
+                    imageUrl: doc.data().imageUrl,
+                    category: category.name,
+                    categoryPriority: category.priority,
+                    productPriority: category.productPriority
+                });
+            });
+            return products;
+        });
+        const products = (await Promise.all(productsPromises)).flat();
+
+        const categoryGroups: Record<string, {priority: number, products: any[]}> = {};
+        products.forEach(product => {
+            const category = product.category;
+            if (!categoryGroups[category]) {
+                categoryGroups[category] = { priority: product.categoryPriority, products: [] };
             }
+            categoryGroups[category].products.push(product);
         });
 
-        res.json(products);
+        // Sort products by category priority
+        const categoryGroupsArray = Object.entries(categoryGroups);
+        categoryGroupsArray.sort((a, b) => b[1].priority - a[1].priority);
+        categoryGroupsArray.forEach(([category, data]) => {
+            data.products.sort((a: any, b: any) => b.productPriority - a.productPriority);
+        });
+
+        let sortedProducts = [] as any[];
+        categoryGroupsArray.forEach(([category, data]) => {
+            sortedProducts = sortedProducts.concat(data.products);
+        });
+
+        sortedProducts.forEach((product: any) => {
+            delete product.categoryPriority;
+            delete product.productPriority;
+        });
+
+        res.json(sortedProducts);
     } catch (error) {
         res.status(500).send("Error fetching products: " + error);
     }
 });
+
 
 app.post('/add-product', async (req: Request, res: Response) => {
     console.log(req.body);
