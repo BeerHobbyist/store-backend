@@ -30,6 +30,7 @@ interface Product {
     packageType: string;
     price: number;
     imageUrl: string;
+    disabled: boolean;
     category: string;
     categoryPriority: number;
     productPriority: number;
@@ -69,6 +70,7 @@ function processProductData(productId: string, productData: any, categoriesData:
         packageType: productData.packageType,
         price: productData.price,
         imageUrl: productData.imageUrl,
+        disabled: productData.disabled,
         category: category.name,
         categoryPriority: category.priority,
         productPriority: category.productPriority
