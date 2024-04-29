@@ -1,8 +1,10 @@
 import * as express from 'express';
 import * as cors from 'cors';
 import * as admin from 'firebase-admin';
-import { Request, Response } from 'express';
 import { onRequest } from 'firebase-functions/v2/https';
+import * as jwt from 'jsonwebtoken';
+import * as session from 'express-session';
+import * as cookieParser from 'cookie-parser';
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -10,180 +12,49 @@ admin.initializeApp();
 // Initialize Express
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
 
 // Apply CORS middleware.
-const corsOptions = { origin: true }; // Update with your frontend URL
+const corsOptions = {
+    origin: true,  // Update with your specific domain in production
+    credentials: true  // This allows cookies to be sent with cross-origin requests
+};
 app.use(cors(corsOptions));
 
-interface Category {
-    name: string;
-    priority: number;
-}
+app.use("/orders", session({ secret: "bananabread", resave: false, saveUninitialized: false }));
 
-interface CategoryData extends Category {
-    productPriority: number;
-}
+app.use("/orders/auth/*", (req, res, next) => {
+    const token = req.cookies['authToken'];
 
-interface Product {
-    id: string;
-    name: string;
-    packageType: string;
-    price: number;
-    imageUrl: string;
-    disabled: boolean;
-    category: string;
-    categoryPriority: number;
-    productPriority: number;
-}
-
-interface CategoryGroup {
-    priority: number;
-    products: Product[];
-}
-
-// Utility function to fetch products by IDs
-async function getProductsByIds(productIds: string[]): Promise<Product[]> {
-    const productsPromises = productIds.map(async (productId): Promise<Product[]> => {
-        const productDoc = await admin.firestore().collection("Products").doc(productId).get();
-        if (!productDoc.exists) {
-            throw new Error(`No product found with ID: ${productId}`);
+    if (!token) {
+        return res.status(401).send("Unauthorized: No token provided");
+    }
+    
+    jwt.verify(token, "bananabread", (err: any, user: any) => {
+        if (err) {
+            return res.status(401).send("Unauthorized: Invalid token");
         }
-        const productData = productDoc.data()!;
-        const categories = productData.category as Category[];
-        const categoriesData = await Promise.all(
-            categories.map(async (category): Promise<CategoryData> => {
-                const categoryDoc = await admin.firestore().collection("Categories").doc(category.name).get();
-                const categoryData = categoryDoc.data()!;
-                return { ...categoryData, name: categoryDoc.id, productPriority: category.priority } as CategoryData;
-            })
-        );
-        return processProductData(productDoc.id, productData, categoriesData);
+        next(); // Proceed to next middleware or route handler
+        return;
     });
-    return (await Promise.all(productsPromises)).flat();
-}
-
-// Function to process product data
-function processProductData(productId: string, productData: any, categoriesData: CategoryData[]): Product[] {
-    return categoriesData.map(category => ({
-        id: productId,
-        name: productData.name,
-        packageType: productData.packageType,
-        price: productData.price,
-        imageUrl: productData.imageUrl,
-        disabled: productData.disabled,
-        category: category.name,
-        categoryPriority: category.priority,
-        productPriority: category.productPriority
-    }));
-}
-
-// Express route to fetch all products
-app.get('/products', async (req: Request, res: Response) => {
-    try {
-        const productsSnapshot = await admin.firestore().collection("Products").get();
-        const allProductIds = productsSnapshot.docs.map(doc => doc.id);
-        const products = await getProductsByIds(allProductIds);
-        const sortedProducts = sortAndStructureProducts(products);
-        res.json(sortedProducts);
-    } catch (error) {
-        res.status(500).send("Error fetching products: " + error);
-    }
+    return;
 });
 
-// Function to sort and structure products
-function sortAndStructureProducts(products: Product[]): Product[] {
-    const categoryGroups: Record<string, CategoryGroup> = {};
-    products.forEach(product => {
-        const category = product.category;
-        if (!categoryGroups[category]) {
-            categoryGroups[category] = { priority: product.categoryPriority, products: [] };
-        }
-        categoryGroups[category].products.push(product);
+app.post('/login', (req, res) => {
+    // TODO: Implement actual login logic to validate username and password
+    const { username, password } = req.body;
+    const token = jwt.sign({ username, password }, "bananabread");
+
+    // Set cookie with HTTP-only and Secure flags
+    res.cookie('authToken', token, {
+        httpOnly: true,
+        secure: true, // Secure flag ensures the cookie is only used over HTTPS
+        sameSite: 'strict', // Helps mitigate CSRF attacks by restricting cross-origin use of the cookie
+        maxAge: 3600000 // Set cookie expiration as needed
     });
 
-    const categoryGroupsArray = Object.entries(categoryGroups);
-    categoryGroupsArray.sort((a, b) => b[1].priority - a[1].priority);
-    categoryGroupsArray.forEach(([category, data]) => {
-        data.products.sort((a, b) => b.productPriority - a.productPriority);
-    });
-
-    let sortedProducts: Product[] = [];
-    categoryGroupsArray.forEach(([category, data]) => {
-        sortedProducts = sortedProducts.concat(data.products);
-    });
-
-    sortedProducts.forEach((product: any) => {
-        delete product.categoryPriority;
-        delete product.productPriority;
-    });
-
-    return sortedProducts;
-}
-
-
-app.post('/add-product', async (req: Request, res: Response) => {
-    console.log(req.body);
-    try {
-        const product = req.body;
-
-        const newProduct = await admin.firestore().collection("Products").add(product);
-
-        res.json({ id: newProduct.id });
-    } catch (error) {
-        res.status(500).send("Error adding product: " + error);
-    }
+    res.send('Login successful and token set in cookie');
 });
-
-app.post('/add-order', async (req: Request, res: Response) => {
-    console.log(req.body);
-    try {
-        const order = req.body;
-        order.orderTime = new Date();
-        const newOrder = await admin.firestore().collection("Orders").add(order);
-        res.json({ id: newOrder.id });
-    } catch (error) {
-        console.log(error);
-        res.status(500).send("Error adding order: " + error);
-    }
-});
-
-app.get('/orders', async (req: Request, res: Response) => {
-    try {
-        const ordersSnapshot = await admin.firestore().collection("Orders").get();
-        const ordersPromises = ordersSnapshot.docs.map(async (doc: any) => {
-            const productsOrdered = doc.data().productsOrdered;
-            // Use Promise.all to wait for all getProductsByIds promises to resolve
-            const products = await Promise.all(
-                productsOrdered.map(async (product: any) => {
-                    const productData = await getProductsByIds([product.id]);
-                    return {
-                        count: product.count,
-                        product: productData[0],
-                    };
-                })
-            );
-            console.log(products);
-            products.forEach((product: any) => {
-                delete product.product.categoryPriority;
-                delete product.product.productPriority;
-            });
-            
-            // Return the complete order object with resolved products
-            return {
-                ...doc.data(), // spread the rest of the order data
-                id: doc.id,
-                productsOrdered: products, // this now contains actual product data
-            };
-
-        });
-        // Use Promise.all to wait for all order promises to resolve
-        const orders = await Promise.all(ordersPromises);
-        res.json(orders);
-    } catch (error) {
-        res.status(500).send("Error fetching orders: " + error);
-    }
-});
-
 
 // Export the Express app as a Firebase Cloud Function
 export const api = onRequest(app);
