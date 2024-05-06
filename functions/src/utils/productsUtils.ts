@@ -1,12 +1,5 @@
 import * as admin from 'firebase-admin';
 
-
-
-
-
-
-
-
 export async function getProductsByIds(productIds: string[]): Promise<Product[]> {
     const productsPromises = productIds.map(async (productId): Promise<Product[]> => {
         const productDoc = await admin.firestore().collection("Products").doc(productId).get();
