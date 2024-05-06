@@ -1,6 +1,6 @@
 # Store API
 
-This is a Firebase application that uses Express.js and Firebase Admin SDK to manage and fetch product data. The project is developed in TypeScript and uses ESLint for linting. This was created as a part of comertial project for a small business. This project is only an API for an AJAX application.
+This is a Firebase application that uses Express.js and Firebase Admin SDK to manage and fetch product data. The project is developed in TypeScript and uses ESLint for linting. This was created as a part of comertial project for a small business. This project is only a REST API for the app. Note that this project is undergoing heavy restructuring on the experimental branch. For new changed please check that branch.
 
 ## Features
 - Fetch all products
