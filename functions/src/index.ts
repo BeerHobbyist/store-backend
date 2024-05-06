@@ -1,13 +1,17 @@
 import * as express from 'express';
 import * as cors from 'cors';
-import * as admin from 'firebase-admin';
+import * as firebase from 'firebase-admin';
 import { onRequest } from 'firebase-functions/v2/https';
 import * as jwt from 'jsonwebtoken';
 import * as session from 'express-session';
 import * as cookieParser from 'cookie-parser';
+import 'dotenv/config';
+
+import * as admin from './routes/admin';
+import * as products from './routes/customer';
 
 // Initialize Firebase Admin
-admin.initializeApp();
+firebase.initializeApp();
 
 // Initialize Express
 const app = express();
@@ -21,16 +25,18 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-app.use("/orders", session({ secret: "bananabread", resave: false, saveUninitialized: false }));
+app.use("/orders", session({ secret: process.env.SECRET ?? 'default key', resave: false, saveUninitialized: false }));
 
-app.use("/orders/auth/*", (req, res, next) => {
+app.use("/admin/auth/*", (req, res, next) => {
     const token = req.cookies['authToken'];
 
     if (!token) {
         return res.status(401).send("Unauthorized: No token provided");
     }
-    
-    jwt.verify(token, "bananabread", (err: any, user: any) => {
+    if (!process.env.PRIVATE_KEY) {
+        throw new Error('PRIVATE_KEY must be set');
+    }
+    jwt.verify(token, process.env.PRIVATE_KEY, (err: any, user: any) => {
         if (err) {
             return res.status(401).send("Unauthorized: Invalid token");
         }
@@ -40,21 +46,9 @@ app.use("/orders/auth/*", (req, res, next) => {
     return;
 });
 
-app.post('/login', (req, res) => {
-    // TODO: Implement actual login logic to validate username and password
-    const { username, password } = req.body;
-    const token = jwt.sign({ username, password }, "bananabread");
-
-    // Set cookie with HTTP-only and Secure flags
-    res.cookie('authToken', token, {
-        httpOnly: true,
-        secure: true, // Secure flag ensures the cookie is only used over HTTPS
-        sameSite: 'strict', // Helps mitigate CSRF attacks by restricting cross-origin use of the cookie
-        maxAge: 3600000 // Set cookie expiration as needed
-    });
-
-    res.send('Login successful and token set in cookie');
-});
+// Define the routes
+app.use("/admin", admin.adminRouter);
+app.use("/customer", products.customerRouter);
 
 // Export the Express app as a Firebase Cloud Function
 export const api = onRequest(app);
